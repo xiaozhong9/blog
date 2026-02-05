@@ -1,0 +1,70 @@
+{
+  "nav": {
+    "logo": "Nano Banana",
+    "blog": "Blog",
+    "projects": "Projects",
+    "life": "Life",
+    "about": "About",
+    "search": "Search...",
+    "searchPlaceholder": "Type to search articles..."
+  },
+  "home": {
+    "hero": {
+      "greeting": "Hi, I'm",
+      "name": "Nano Banana",
+      "tagline": "A developer who loves building beautiful things",
+      "description": "Welcome to my personal blog, where I share my technical explorations, projects, and life insights."
+    },
+    "featured": "Featured",
+    "latestPosts": "Latest Posts",
+    "readMore": "Read More",
+    "readingTime": "{minutes} min read",
+    "viewAll": "View All"
+  },
+  "post": {
+    "tableOfContents": "Table of Contents",
+    "backToList": "Back to List",
+    "publishedOn": "Published on",
+    "tags": "Tags",
+    "relatedPosts": "Related Posts",
+    "comments": "Comments"
+  },
+  "project": {
+    "title": "Projects",
+    "description": "Some projects I've worked on",
+    "stars": "Stars",
+    "forks": "Forks",
+    "viewProject": "View Project",
+    "techStack": "Tech Stack"
+  },
+  "life": {
+    "title": "Life & Journal",
+    "subtitle": "Moments outside of work",
+    "filterByTag": "Filter by tag"
+  },
+  "about": {
+    "title": "About Me",
+    "subtitle": "Get to know me",
+    "story": "My Story",
+    "skills": "Skills",
+    "contact": "Contact"
+  },
+  "search": {
+    "title": "Search",
+    "noResults": "No results found",
+    "recent": "Recent Searches",
+    "popular": "Popular Searches",
+    "results": "{count} results"
+  },
+  "theme": {
+    "light": "Light Mode",
+    "dark": "Dark Mode",
+    "system": "System"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "notFound": "Page Not Found",
+    "backToHome": "Back to Home"
+  }
+}

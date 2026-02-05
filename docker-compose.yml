@@ -1,0 +1,172 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # Django 后端
+  # ============================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nano_banana_backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - static_volume:/app/staticfiles
+      - media_volume:/app/media
+      - logs_volume:/app/logs
+    depends_on:
+      - mysql
+      - redis
+      - elasticsearch
+    networks:
+      - nano_banana_network
+    restart: unless-stopped
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python manage.py runserver 0.0.0.0:8000"
+
+  # ============================================
+  # Celery Worker
+  # ============================================
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nano_banana_celery_worker
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - logs_volume:/app/logs
+    depends_on:
+      - mysql
+      - redis
+      - elasticsearch
+    networks:
+      - nano_banana_network
+    restart: unless-stopped
+    command: celery -A config worker -l info
+
+  # ============================================
+  # Celery Beat (定时任务调度)
+  # ============================================
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nano_banana_celery_beat
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+      - logs_volume:/app/logs
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - nano_banana_network
+    restart: unless-stopped
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+
+  # ============================================
+  # MySQL 数据库
+  # ============================================
+  mysql:
+    image: mysql:8.0
+    container_name: nano_banana_mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: admin
+      MYSQL_DATABASE: nano_banana_db
+      MYSQL_USER: banana_user
+      MYSQL_PASSWORD: banana_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/mysql-init:/docker-entrypoint-initdb.d
+    networks:
+      - nano_banana_network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # ============================================
+  # Redis 缓存/消息队列
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: nano_banana_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nano_banana_network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # ============================================
+  # Elasticsearch 搜索引擎
+  # ============================================
+  elasticsearch:
+    image: elasticsearch:8.17.2
+    container_name: nano_banana_elasticsearch
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - nano_banana_network
+    restart: unless-stopped
+
+  # ============================================
+  # Flower (Celery 监控)
+  # ============================================
+  flower:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nano_banana_flower
+    ports:
+      - "5555:5555"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
+    networks:
+      - nano_banana_network
+    restart: unless-stopped
+    command: celery -A config flower --port=5555
+
+# ============================================
+# 数据卷
+# ============================================
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  static_volume:
+    driver: local
+  media_volume:
+    driver: local
+  logs_volume:
+    driver: local
+
+# ============================================
+# 网络
+# ============================================
+networks:
+  nano_banana_network:
+    driver: bridge

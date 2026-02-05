@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(npm install:*)",
+      "Bash(npx:*)",
+      "Bash(where:*)",
+      "Bash(winget upgrade:*)",
+      "Bash(curl:*)",
+      "Bash(start msiexec.exe:*)",
+      "Bash(start \"$TEMP\\\\node-installer.msi\")",
+      "Bash(explorer \"$TEMP\")",
+      "Bash(echo:*)",
+      "Bash(powershell:*)",
+      "Bash(npm run build:*)"
+    ]
+  }
+}

@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Light Theme */
+  .light {
+    --color-bg: theme('colors.light.bg');
+    --color-surface: theme('colors.light.surface');
+    --color-text-primary: theme('colors.light.text.primary');
+    --color-text-secondary: theme('colors.light.text.secondary');
+    --color-text-muted: theme('colors.light.text.muted');
+    --color-border: theme('colors.light.border');
+  }
+
+  /* Dark Theme */
+  .dark {
+    --color-bg: theme('colors.dark.bg');
+    --color-surface: theme('colors.dark.surface');
+    --color-text-primary: theme('colors.dark.text.primary');
+    --color-text-secondary: theme('colors.dark.text.secondary');
+    --color-text-muted: theme('colors.dark.text.muted');
+    --color-border: theme('colors.dark.border');
+  }
+
+  body {
+    @apply bg-light-bg text-light-text-primary dark:bg-dark-bg dark:text-dark-text-primary;
+    font-feature-settings: 'cv11', 'ss01';
+    font-variation-settings: 'opsz' 32;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Custom selection */
+  ::selection {
+    @apply bg-primary-from text-white;
+  }
+
+  /* Focus styles */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-primary-from;
+  }
+}
+
+@layer components {
+  /* Glassmorphism navbar */
+  .glass-nav {
+    @apply backdrop-blur-glass bg-light-surface/80 dark:bg-dark-surface/80
+           border-b border-light-border dark:border-dark-border;
+    transition: all 0.3s ease;
+  }
+
+  .glass-nav.scrolled {
+    @apply shadow-soft;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary-from to-primary-to
+           bg-clip-text text-transparent;
+  }
+
+  /* Card styles */
+  .card {
+    @apply bg-light-surface dark:bg-dark-surface
+           rounded-2xl border border-light-border dark:border-dark-border
+           shadow-sm;
+    transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .card-hover {
+    @apply card;
+  }
+
+  .card-hover:hover {
+    @apply shadow-soft-lg -translate-y-1;
+  }
+
+  /* Reading content */
+  .prose {
+    @apply max-w-reading mx-auto;
+  }
+
+  .prose h1,
+  .prose h2,
+  .prose h3,
+  .prose h4,
+  .prose h5,
+  .prose h6 {
+    @apply font-bold text-light-text-primary dark:text-dark-text-primary;
+  }
+
+  .prose h1 {
+    @apply text-4xl mt-8 mb-4;
+  }
+
+  .prose h2 {
+    @apply text-3xl mt-6 mb-3;
+  }
+
+  .prose h3 {
+    @apply text-2xl mt-4 mb-2;
+  }
+
+  .prose p {
+    @apply my-4 leading-relaxed text-light-text-secondary dark:text-dark-text-secondary;
+  }
+
+  .prose a {
+    @apply text-primary-from hover:text-primary-to transition-colors duration-150;
+  }
+
+  .prose code:not(.inline-code) {
+    @apply bg-gray-100 dark:bg-gray-800
+           px-1.5 py-0.5 rounded text-sm
+           text-primary-from;
+  }
+
+  /* Don't apply default styles to pre elements inside code blocks */
+  .prose > pre:not(.code-block-container pre) {
+    @apply bg-gray-900 dark:bg-gray-950
+           rounded-xl p-4 overflow-x-auto
+           shadow-inner;
+  }
+
+  /* Code blocks inside containers should be transparent */
+  .prose :deep(.code-block-container) {
+    @apply my-6;
+  }
+
+  .prose :deep(.code-block-container pre) {
+    @apply bg-transparent p-0 !important;
+  }
+
+  .prose img {
+    @apply rounded-xl my-6;
+  }
+
+  .prose blockquote {
+    @apply border-l-4 border-primary-from
+           pl-4 italic text-light-text-secondary dark:text-dark-text-secondary;
+  }
+
+  .prose ul,
+  .prose ol {
+    @apply ml-6 my-4 space-y-2;
+  }
+
+  .prose li {
+    @apply text-light-text-secondary dark:text-dark-text-secondary;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-light-bg dark:bg-dark-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-light-border dark:bg-dark-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-primary-from;
+  }
+}
+
+@layer utilities {
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary-from to-primary-to bg-clip-text text-transparent;
+  }
+
+  /* Glass effect */
+  .glass {
+    @apply backdrop-blur-glass bg-white/80 dark:bg-gray-900/80;
+  }
+}

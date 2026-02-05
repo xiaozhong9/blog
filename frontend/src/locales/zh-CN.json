@@ -1,0 +1,70 @@
+{
+  "nav": {
+    "logo": "Nano Banana",
+    "blog": "博客",
+    "projects": "项目",
+    "life": "生活",
+    "about": "关于",
+    "search": "搜索...",
+    "searchPlaceholder": "输入关键词搜索文章..."
+  },
+  "home": {
+    "hero": {
+      "greeting": "你好，我是",
+      "name": "Nano Banana",
+      "tagline": "一名热爱构建美好事物的开发者",
+      "description": "欢迎来到我的个人博客，这里记录了我的技术探索、项目经历和生活感悟。"
+    },
+    "featured": "精选文章",
+    "latestPosts": "最新文章",
+    "readMore": "阅读更多",
+    "readingTime": "{minutes} 分钟阅读",
+    "viewAll": "查看全部"
+  },
+  "post": {
+    "tableOfContents": "目录",
+    "backToList": "返回列表",
+    "publishedOn": "发布于",
+    "tags": "标签",
+    "relatedPosts": "相关文章",
+    "comments": "评论"
+  },
+  "project": {
+    "title": "项目展示",
+    "description": "我参与开发的一些项目",
+    "stars": "Stars",
+    "forks": "Forks",
+    "viewProject": "查看项目",
+    "techStack": "技术栈"
+  },
+  "life": {
+    "title": "生活记录",
+    "subtitle": "工作之外的日常瞬间",
+    "filterByTag": "按标签筛选"
+  },
+  "about": {
+    "title": "关于我",
+    "subtitle": "了解我的故事",
+    "story": "我的故事",
+    "skills": "技能",
+    "contact": "联系方式"
+  },
+  "search": {
+    "title": "搜索",
+    "noResults": "未找到相关内容",
+    "recent": "最近搜索",
+    "popular": "热门搜索",
+    "results": "{count} 个结果"
+  },
+  "theme": {
+    "light": "浅色模式",
+    "dark": "深色模式",
+    "system": "跟随系统"
+  },
+  "common": {
+    "loading": "加载中...",
+    "error": "出错了",
+    "notFound": "页面未找到",
+    "backToHome": "返回首页"
+  }
+}

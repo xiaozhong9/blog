@@ -245,6 +245,42 @@ const result = await apiClient.post<ApiResponse<AuthResponse>>(
 
 ## 常见任务
 
+### Git 提交规范
+
+**重要**：所有 Git 提交必须使用用户的真实身份，**不得使用 AI 作为作者**。
+
+**当前配置**：
+```bash
+用户名：xiaozhong9
+邮箱：250353831@qq.com
+```
+
+**提交方式**：
+```bash
+# ✅ 正确 - 使用用户身份
+git commit -m "feat: add new feature"
+
+# ❌ 错误 - 使用 AI 身份
+git commit -m "feat: add new feature" --author="Claude Sonnet 4.5 <noreply@anthropic.com>"
+
+# ❌ 错误 - 添加 Co-Authored-By 标记
+git commit -m "feat: add new feature" -m "Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+```
+
+**AI 工作规范**：
+- AI 在执行 `git commit` 时，**禁止使用** `--author` 参数
+- AI 在执行 `git commit` 时，**禁止添加** "Co-Authored-By" 标记
+- 所有提交自动使用 Git 配置的用户身份
+
+**验证命令**：
+```bash
+# 查看最近的提交
+git log --oneline --pretty=format:"%h - %an <%ae>" -5
+
+# 应该看到：
+# abc1234 - xiaozhong9 <250353831@qq.com>
+```
+
 ### 添加新博客文章
 
 1. 在 `frontend/src/content/` 中创建 Markdown 文件

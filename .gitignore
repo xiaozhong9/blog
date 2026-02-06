@@ -186,3 +186,12 @@ $RECYCLE.BIN/
 # ============================================
 *~
 .nfs*
+
+# ============================================
+# Claude Code - User specific settings (SENSITIVE)
+# ============================================
+.claude/settings.local.json
+.claude/history.jsonl
+.claude/debug/
+.claude/cache/
+.claude/file-history/

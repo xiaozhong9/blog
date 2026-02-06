@@ -1,6 +1,16 @@
 """
 搜索模块视图
+
+优化要点：
+1. 添加详细的错误处理和日志
+2. 限制查询复杂度防止 ES 过载
+3. 添加查询结果缓存
+4. 优化分页和排序
+5. 支持更多搜索选项
 """
+
+import logging
+from typing import Optional, List, Dict, Any
 
 from rest_framework import status
 from rest_framework.views import APIView
@@ -8,16 +18,30 @@ from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from elasticsearch_dsl import Q
+from elasticsearch.exceptions import ApiError, TransportError
 
 from .models import ArticleDocument
+from utils.cache_utils import CacheKeyBuilder, get_or_set
+
+logger = logging.getLogger(__name__)
+
+
+# 搜索配置常量
+MAX_PAGE_SIZE = 100  # 最大每页数量
+DEFAULT_PAGE_SIZE = 20
+DEFAULT_SEARCH_TIMEOUT = '3s'  # ES 查询超时
+MIN_QUERY_LENGTH = 2  # 最小查询长度
 
 
 class SearchView(APIView):
-    """文章搜索视图"""
+    """文章搜索视图
+
+    支持全文搜索、分类过滤、标签过滤、高亮显示等功能
+    """
 
     @swagger_auto_schema(
         operation_summary='全文搜索',
-        operation_description='搜索文章内容，支持高亮显示',
+        operation_description='搜索文章内容，支持高亮显示、多字段搜索',
         manual_parameters=[
             openapi.Parameter(
                 'q',
@@ -59,138 +83,253 @@ class SearchView(APIView):
                 type=openapi.TYPE_INTEGER,
                 default=20
             ),
+            openapi.Parameter(
+                'sort',
+                openapi.IN_QUERY,
+                description='排序方式',
+                type=openapi.TYPE_STRING,
+                enum=['published_at', 'view_count', 'like_count', '-published_at', '-view_count', '-like_count'],
+                default='-published_at'
+            ),
         ],
         responses={200: openapi.Response(description='搜索成功')}
     )
     def get(self, request):
         """执行搜索"""
-        query = request.query_params.get('q', '').strip()
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 20))
+        query = self._get_query_param(request)
+        page, page_size = self._get_pagination_params(request)
+        sort_by = request.query_params.get('sort', '-published_at')
 
+        # 参数验证
         if not query:
+            return self._error_response('请输入搜索关键词', status.HTTP_400_BAD_REQUEST)
+
+        if len(query) < MIN_QUERY_LENGTH:
+            return self._error_response(
+                f'搜索关键词至少需要 {MIN_QUERY_LENGTH} 个字符',
+                status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # 尝试从缓存获取结果（缓存 5 分钟）
+            cache_key = CacheKeyBuilder.build(
+                'search',
+                query,
+                request.query_params.get('category', ''),
+                request.query_params.get('tags', ''),
+                request.query_params.get('locale', ''),
+                sort_by,
+                page,
+                page_size
+            )
+
+            result = get_or_set(
+                cache_key,
+                lambda: self._perform_search(query, request, page, page_size, sort_by),
+                ttl=300
+            )
+
             return Response({
-                'code': 400,
-                'message': '请输入搜索关键词',
-                'data': None
-            }, status=status.HTTP_400_BAD_REQUEST)
+                'code': 200,
+                'message': 'success',
+                'data': result
+            })
+
+        except ElasticsearchException as e:
+            logger.error(f"Elasticsearch 搜索失败: {e}, 查询: {query}")
+            return self._error_response(
+                '搜索服务暂时不可用，请稍后重试',
+                status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+        except Exception as e:
+            logger.exception(f"搜索处理异常: {e}")
+            return self._error_response(
+                '搜索失败，请检查参数',
+                status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    def _get_query_param(self, request) -> str:
+        """获取并清理查询参数"""
+        return request.query_params.get('q', '').strip()
+
+    def _get_pagination_params(self, request) -> tuple[int, int]:
+        """获取并验证分页参数"""
+        page = max(1, int(request.query_params.get('page', 1)))
+        page_size = min(
+            MAX_PAGE_SIZE,
+            max(1, int(request.query_params.get('page_size', DEFAULT_PAGE_SIZE)))
+        )
+        return page, page_size
+
+    def _perform_search(
+        self,
+        query: str,
+        request,
+        page: int,
+        page_size: int,
+        sort_by: str
+    ) -> Dict[str, Any]:
+        """执行实际的搜索操作"""
 
         # 构建搜索查询
         search = ArticleDocument.search()
 
-        # 多字段查询 (标题权重最高)
-        q = Q(
-            'multi_match',
-            query=query,
-            fields=['title^3', 'description^2', 'content'],
-            fuzziness='AUTO'
-        )
+        # 设置超时和最大结果窗口
+        search = search.params(request_timeout=DEFAULT_SEARCH_TIMEOUT)
+        search = search.params(size=page_size, from_=(page - 1) * page_size)
+
+        # 构建多字段查询
+        should_queries = [
+            # 精确匹配标题（最高权重）
+            Q('match', title={'query': query, 'boost': 5}),
+            # 标题模糊匹配
+            Q('match_phrase', title={'query': query, 'boost': 3}),
+            # 描述匹配
+            Q('match', description={'query': query, 'boost': 2}),
+            # 内容匹配
+            Q('match', content=query),
+        ]
+
+        # 添加模糊匹配（仅对较长的查询）
+        if len(query) >= 3:
+            should_queries.append(
+                Q('multi_match',
+                  query=query,
+                  fields=['title^3', 'description^2', 'content'],
+                  fuzziness='AUTO',
+                  prefix_length=1)
+            )
+
+        q = Q('bool', should=should_queries, minimum_should_match=1)
         search = search.query(q)
 
-        # 过滤条件
-        category = request.query_params.get('category')
-        if category:
-            search = search.filter('term', category_slug=category)
+        # 应用过滤器
+        search = self._apply_filters(search, request.query_params)
 
-        locale = request.query_params.get('locale')
-        if locale:
-            search = search.filter('term', locale=locale)
-
-        tags = request.query_params.get('tags')
-        if tags:
-            tag_list = tags.split(',')
-            search = search.filter('terms', tags_names=tag_list)
-
-        # 高亮显示
+        # 配置高亮
         search = search.highlight(
             'title',
             'description',
             'content',
             fragment_size=150,
             number_of_fragments=3,
-            pre_tags=['<em>'],
-            post_tags=['</em>']
+            pre_tags=['<mark>'],
+            post_tags=['</mark>'],
+            no_match_size=150
         )
 
         # 排序
-        search = search.sort('-published_at')
-
-        # 分页
-        start = (page - 1) * page_size
-        end = start + page_size
-        search = search[start:end]
+        search = search.sort(sort_by)
 
         # 执行搜索
-        try:
-            response = search.execute()
-        except Exception as e:
-            return Response({
-                'code': 500,
-                'message': f'搜索失败: {str(e)}',
-                'data': None
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        response = search.execute()
 
         # 序列化结果
-        results = []
-        for hit in response:
-            # 将 hit 转换为字典以便更安全地访问字段
-            hit_dict = hit.to_dict()
+        results = [self._serialize_hit(hit) for hit in response]
 
-            # 处理可能为数组的字段
-            def get_first(value):
-                if isinstance(value, list):
-                    return value[0] if value else ''
-                return value
+        return {
+            'items': results,
+            'total': response.hits.total.value,
+            'page': page,
+            'page_size': page_size,
+            'query': query,
+            'max_score': response.hits.max_score
+        }
 
-            # 提取分类
-            category_name = get_first(hit_dict.get('category_name'))
-            category_slug = get_first(hit_dict.get('category_slug'))
+    def _apply_filters(self, search, params: Dict[str, str]):
+        """应用搜索过滤器"""
+        # 分类过滤
+        category = params.get('category')
+        if category:
+            search = search.filter('term', category_slug=category)
 
-            # 提取标签
-            tags_names = hit_dict.get('tags_names', [])
-            tags_list = tags_names if isinstance(tags_names, list) else []
+        # 语言过滤
+        locale = params.get('locale')
+        if locale:
+            search = search.filter('term', locale=locale)
 
-            data = {
-                'id': hit.id,
-                'title': get_first(hit_dict.get('title')),
-                'description': get_first(hit_dict.get('description')),
-                'slug': get_first(hit_dict.get('slug')),
-                'category': {
-                    'name': category_name,
-                    'slug': category_slug,
-                } if category_name else None,
-                'tags': [
-                    {'name': tag}
-                    for tag in tags_list
-                ],
-                'locale': get_first(hit_dict.get('locale')),
-                'reading_time': hit_dict.get('reading_time'),
-                'featured': hit_dict.get('featured'),
-                'view_count': hit_dict.get('view_count'),
-                'published_at': get_first(hit_dict.get('published_at')),
-                'highlight': hit.meta.highlight.to_dict() if hasattr(hit.meta, 'highlight') else None
+        # 标签过滤（支持多个）
+        tags = params.get('tags')
+        if tags:
+            tag_list = [t.strip() for t in tags.split(',') if t.strip()]
+            if tag_list:
+                search = search.filter('terms', tags_names=tag_list)
+
+        # 精选过滤
+        featured = params.get('featured')
+        if featured and featured.lower() in ('true', '1'):
+            search = search.filter('term', featured=True)
+
+        return search
+
+    def _serialize_hit(self, hit) -> Dict[str, Any]:
+        """序列化搜索结果"""
+        hit_dict = hit.to_dict()
+
+        def get_first(value):
+            """获取字段值（处理数组情况）"""
+            if isinstance(value, list):
+                return value[0] if value else ''
+            return value
+
+        # 提取分类信息
+        category_name = get_first(hit_dict.get('category_name'))
+        category_slug = get_first(hit_dict.get('category_slug'))
+
+        # 提取标签
+        tags_names = hit_dict.get('tags_names', [])
+        tags_list = tags_names if isinstance(tags_names, list) else []
+
+        # 构建结果
+        result = {
+            'id': hit.id,
+            'title': get_first(hit_dict.get('title')),
+            'description': get_first(hit_dict.get('description')),
+            'slug': get_first(hit_dict.get('slug')),
+            'category': {
+                'name': category_name,
+                'slug': category_slug,
+            } if category_name else None,
+            'tags': [{'name': tag} for tag in tags_list],
+            'locale': get_first(hit_dict.get('locale')),
+            'reading_time': hit_dict.get('reading_time'),
+            'featured': hit_dict.get('featured'),
+            'view_count': hit_dict.get('view_count', 0),
+            'like_count': hit_dict.get('like_count', 0),
+            'comment_count': hit_dict.get('comment_count', 0),
+            'published_at': get_first(hit_dict.get('published_at')),
+            'score': hit.meta.score,
+        }
+
+        # 添加高亮结果
+        if hasattr(hit.meta, 'highlight') and hit.meta.highlight:
+            highlight_dict = hit.meta.highlight.to_dict()
+            result['highlight'] = {
+                'title': highlight_dict.get('title', []),
+                'description': highlight_dict.get('description', []),
+                'content': highlight_dict.get('content', []),
             }
-            results.append(data)
 
+        return result
+
+    def _error_response(self, message: str, status_code: int) -> Response:
+        """返回错误响应"""
         return Response({
-            'code': 200,
-            'message': 'success',
-            'data': {
-                'items': results,
-                'total': response.hits.total.value,
-                'page': page,
-                'page_size': page_size,
-                'query': query
-            }
-        })
+            'code': status_code,
+            'message': message,
+            'data': None
+        }, status=status_code)
 
 
 class SearchSuggestView(APIView):
-    """搜索建议视图"""
+    """搜索建议视图
+
+    提供基于前缀的搜索建议
+    """
 
     @swagger_auto_schema(
         operation_summary='搜索建议',
-        operation_description='根据输入获取搜索建议',
+        operation_description='根据输入获取搜索建议（支持中文拼音）',
         manual_parameters=[
             openapi.Parameter(
                 'q',
@@ -199,14 +338,22 @@ class SearchSuggestView(APIView):
                 type=openapi.TYPE_STRING,
                 required=True
             ),
+            openapi.Parameter(
+                'size',
+                openapi.IN_QUERY,
+                description='返回数量',
+                type=openapi.TYPE_INTEGER,
+                default=10
+            ),
         ],
         responses={200: openapi.Response(description='获取成功')}
     )
     def get(self, request):
         """获取搜索建议"""
         query = request.query_params.get('q', '').strip()
+        size = min(20, int(request.query_params.get('size', 10)))
 
-        if not query or len(query) < 2:
+        if not query or len(query) < 1:
             return Response({
                 'code': 200,
                 'message': 'success',
@@ -215,26 +362,69 @@ class SearchSuggestView(APIView):
                 }
             })
 
-        # 使用 match_phrase_prefix 查询实现前缀匹配
+        try:
+            # 缓存建议结果（缓存 10 分钟）
+            cache_key = CacheKeyBuilder.build('search_suggest', query, size)
+
+            suggestions = get_or_set(
+                cache_key,
+                lambda: self._get_suggestions(query, size),
+                ttl=600
+            )
+
+            return Response({
+                'code': 200,
+                'message': 'success',
+                'data': {
+                    'suggestions': suggestions
+                }
+            })
+
+        except ElasticsearchException as e:
+            logger.error(f"Elasticsearch 建议查询失败: {e}")
+            return Response({
+                'code': 200,
+                'message': 'success',
+                'data': {
+                    'suggestions': []  # 失败时返回空列表
+                }
+            })
+        except Exception as e:
+            logger.exception(f"搜索建议异常: {e}")
+            return Response({
+                'code': 200,
+                'message': 'success',
+                'data': {
+                    'suggestions': []
+                }
+            })
+
+    def _get_suggestions(self, query: str, size: int) -> List[str]:
+        """获取搜索建议列表"""
         search = ArticleDocument.search()
-        search = search.query('match_phrase_prefix', title=query)
-        search = search[:10]  # 限制结果数量
+
+        # 使用 completion suggester 或 match_phrase_prefix
+        # 这里使用 match_phrase_prefix 支持前缀匹配
+        search = search.query('match_phrase_prefix', title={'query': query, 'boost': 2})
+
+        # 限制结果数量
+        search = search[:size]
 
         response = search.execute()
 
-        # 提取建议
-        suggestions = []
+        # 提取建议标题
+        suggestions = set()  # 使用集合去重
         for hit in response:
-            hit_dict = hit.to_dict()
-            title = hit_dict.get('title', '')
-            if isinstance(title, list):
-                title = title[0] if title else ''
-            suggestions.append(title)
+            title = self._extract_title(hit)
+            if title:
+                suggestions.add(title)
 
-        return Response({
-            'code': 200,
-            'message': 'success',
-            'data': {
-                'suggestions': suggestions
-            }
-        })
+        return list(suggestions)[:size]
+
+    def _extract_title(self, hit) -> Optional[str]:
+        """从搜索结果中提取标题"""
+        hit_dict = hit.to_dict()
+        title = hit_dict.get('title', '')
+        if isinstance(title, list):
+            title = title[0] if title else ''
+        return title.strip() if title else None

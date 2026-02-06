@@ -117,6 +117,14 @@ DATABASES = {
 # ============================================
 # 缓存配置 (Redis)
 # ============================================
+# Redis 连接池配置
+REDIS_CONNECTION_POOL_KWARGS = {
+    'max_connections': config('REDIS_MAX_CONNECTIONS', default=50, cast=int),
+    'retry_on_timeout': True,
+    'socket_keepalive': True,
+    'socket_keepalive_options': {},
+}
+
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
@@ -124,14 +132,34 @@ CACHES = {
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'PASSWORD': config('REDIS_PASSWORD', default=''),
+            # 使用 Hiredis 解析器（如果可用）以获得更好的性能
             'PARSER_CLASS': 'redis.connection.HiredisParser' if config('USE_HIREDIS', default=False, cast=bool) else 'redis.connection.PythonParser',
-            'SOCKET_CONNECT_TIMEOUT': 5,
-            'SOCKET_TIMEOUT': 5,
-            'CONNECTION_POOL_KWARGS': {'max_connections': 100}
+            # 连接超时设置
+            'SOCKET_CONNECT_TIMEOUT': config('REDIS_CONNECT_TIMEOUT', default=5, cast=int),
+            'SOCKET_TIMEOUT': config('REDIS_SOCKET_TIMEOUT', default=5, cast=int),
+            # 连接池配置
+            'CONNECTION_POOL_KWARGS': REDIS_CONNECTION_POOL_KWARGS,
+            # 压缩大型数据
+            'COMPRESSOR': 'redis.connection.HiredisParser' if config('USE_CACHE_COMPRESSION', default=False, cast=bool) else None,
         },
         'KEY_PREFIX': config('REDIS_CACHE_PREFIX', default='banana_cache'),
-        'TIMEOUT': 60,  # 默认缓存 60 秒（统计数据强实时性）
-    }
+        'TIMEOUT': config('CACHE_DEFAULT_TIMEOUT', default=300, cast=int),  # 默认缓存 5 分钟
+        'VERSION': 1,  # 缓存版本，用于批量清除缓存
+    },
+    # 会话缓存（单独的数据库）
+    'sessions': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f"redis://{config('REDIS_HOST', default='localhost')}:{config('REDIS_PORT', default='6379')}/{config('REDIS_SESSION_DB', default='1')}",
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'PASSWORD': config('REDIS_PASSWORD', default=''),
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'CONNECTION_POOL_KWARGS': {'max_connections': 20},
+        },
+        'KEY_PREFIX': 'session',
+        'TIMEOUT': 86400,  # 24 小时
+    },
 }
 
 # 会话缓存
@@ -276,24 +304,69 @@ ELASTICSEARCH_INDEX_PREFIX = config('ELASTICSEARCH_INDEX_PREFIX', default='banan
 # ============================================
 # Celery 配置
 # ============================================
-CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/1')
-CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/2')
+
+# Celery Redis Broker 配置
+REDIS_HOST = config('REDIS_HOST', default='localhost')
+REDIS_PORT = config('REDIS_PORT', default='6379')
+REDIS_PASSWORD = config('REDIS_PASSWORD', default='')
+
+# 构建连接 URL
+if REDIS_PASSWORD:
+    broker_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/3"
+    backend_url = f"redis://:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}/4"
+else:
+    broker_url = f"redis://{REDIS_HOST}:{REDIS_PORT}/3"
+    backend_url = f"redis://{REDIS_HOST}:{REDIS_PORT}/4"
+
+CELERY_BROKER_URL = config('CELERY_BROKER_URL', default=broker_url)
+CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default=backend_url)
+
+# Celery 基础配置
 CELERY_TIMEZONE = config('CELERY_TIMEZONE', default='Asia/Shanghai')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 分钟
-CELERY_WORKER_PREFETCH_MULTIPLIER = 4
-CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+CELERY_TASK_TIME_LIMIT = config('CELERY_TASK_TIME_LIMIT', default=30 * 60, cast=int)  # 30 分钟
+CELERY_TASK_SOFT_TIME_LIMIT = config('CELERY_TASK_SOFT_TIME_LIMIT', default=25 * 60, cast=int)  # 25 分钟
 
-# Celery Beat 配置
+# Worker 配置
+CELERY_WORKER_PREFETCH_MULTIPLIER = config('CELERY_WORKER_PREFETCH_MULTIPLIER', default=4, cast=int)
+CELERY_WORKER_MAX_TASKS_PER_CHILD = config('CELERY_WORKER_MAX_TASKS_PER_CHILD', default=1000, cast=int)
+# CELERY_WORKER_CONCURRENCY: None 表示使用 CPU 核心数，从环境变量读取（可选）
+_worker_concurrency = config('CELERY_WORKER_CONCURRENCY', default=None)
+CELERY_WORKER_CONCURRENCY = int(_worker_concurrency) if _worker_concurrency else None
+
+# 结果后端配置
+CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
+    'retry_policy': {
+        'timeout': 5.0
+    },
+    'master_name': 'mymaster',
+}
+
+# 任务配置
+CELERY_TASK_ACKS_LATE = True  # 任务完成后才确认，防止任务丢失
+CELERY_TASK_REJECT_ON_WORKER_LOST = True  # Worker 丢失时拒绝任务
+CELERY_TASK_SEND_SENT_EVENT = True  # 发送任务发送事件
+
+# Beat 配置
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_BEAT_SCHEDULE = {
     # 示例：每日生成统计数据
     'generate-daily-stats': {
         'task': 'stats.tasks.generate_daily_statistics',
         'schedule': crontab(hour=0, minute=0),  # 每天 00:00
+    },
+    # 每小时清理过期缓存
+    'clean-expired-cache': {
+        'task': 'articles.tasks.clean_expired_cache',
+        'schedule': crontab(minute=0),  # 每小时
+    },
+    # 每 15 分钟同步热门文章缓存
+    'sync-popular-articles': {
+        'task': 'stats.tasks.sync_popular_articles_cache',
+        'schedule': crontab(minute='*/15'),  # 每 15 分钟
     },
 }
 

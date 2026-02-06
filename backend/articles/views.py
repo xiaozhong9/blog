@@ -15,6 +15,14 @@ from django.utils import timezone
 from django.db.models import Q, F, Count
 from django.core.cache import cache
 from utils import get_client_ip
+from utils.cache_utils import (
+    CacheKeyBuilder,
+    get_or_set,
+    get_many,
+    set_many,
+    CacheWarmer,
+    RateLimiter
+)
 
 from .models import Article, ArticleVersion
 from .serializers import (
@@ -269,6 +277,8 @@ class ArticleViewSet(ModelViewSet):
         """
         批量查询统计（单次 SQL + Redis 缓存 60 秒）
 
+        使用缓存工具模块，支持缓存穿透防护和批量操作
+
         Args:
             article_ids: 文章 ID 列表
 
@@ -278,14 +288,17 @@ class ArticleViewSet(ModelViewSet):
         if not article_ids:
             return {}
 
-        # 先查缓存
-        cache_keys = [f'article_stats:{aid}' for aid in article_ids]
-        cached_stats = cache.get_many(cache_keys)
+        # 使用标准化的缓存键
+        cache_keys = {aid: CacheKeyBuilder.article_stats(aid) for aid in article_ids}
+        cache_key_list = list(cache_keys.values())
 
-        # 未命中的 ID
+        # 批量获取缓存
+        cached_stats = get_many(cache_key_list)
+
+        # 找出未命中的 ID
         missing_ids = [
             aid for aid in article_ids
-            if f'article_stats:{aid}' not in cached_stats
+            if cache_keys[aid] not in cached_stats
         ]
 
         # 批量查询数据库
@@ -294,28 +307,35 @@ class ArticleViewSet(ModelViewSet):
                 id__in=missing_ids
             ).values('id', 'view_count', 'like_count', 'comment_count')
 
-            # 写入缓存（60 秒 TTL）
+            # 准备缓存数据
             stats_dict = {}
+            cache_data = {}
             for stat in stats:
                 stats_dict[stat['id']] = {
                     'view_count': stat['view_count'],
                     'like_count': stat['like_count'],
                     'comment_count': stat['comment_count']
                 }
-                cache.set(
-                    f'article_stats:{stat["id"]}',
-                    stats_dict[stat['id']],
-                    60  # 强实时性：缓存 60 秒
-                )
+                cache_data[CacheKeyBuilder.article_stats(stat['id'])] = stats_dict[stat['id']]
+
+            # 批量写入缓存（60 秒 TTL）
+            if cache_data:
+                set_many(cache_data, ttl=60)
         else:
             stats_dict = {}
 
         # 合并缓存和数据库结果
         result = {}
         for aid in article_ids:
-            key = f'article_stats:{aid}'
-            if key in cached_stats:
-                result[aid] = cached_stats[key]
+            cache_key = cache_keys[aid]
+            if cache_key in cached_stats:
+                # 处理可能的空值标记
+                value = cached_stats[cache_key]
+                result[aid] = value if value != "__NULL__" else {
+                    'view_count': 0,
+                    'like_count': 0,
+                    'comment_count': 0
+                }
             elif aid in stats_dict:
                 result[aid] = stats_dict[aid]
             else:
@@ -707,25 +727,6 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 
 
-def check_rate_limit(identifier, max_requests=10, period=60):
-    """
-    检查速率限制
-    :param identifier: 唯一标识符（IP地址或用户ID）
-    :param max_requests: 时间段内最大请求数
-    :param period: 时间段（秒）
-    :return: (是否允许, 剩余请求数)
-    """
-    cache_key = f'rate_limit:image_upload:{identifier}'
-    request_count = cache.get(cache_key, 0)
-
-    if request_count >= max_requests:
-        return False, 0
-
-    # 增加计数器
-    cache.set(cache_key, request_count + 1, period)
-    return True, max_requests - request_count - 1
-
-
 @csrf_exempt
 def image_upload_view(request):
     """
@@ -739,8 +740,13 @@ def image_upload_view(request):
     client_ip = request.META.get('REMOTE_ADDR')
     identifier = f"user_{user_id}" if user_id else f"ip_{client_ip}"
 
-    # 检查速率限制
-    allowed, remaining = check_rate_limit(identifier, max_requests=10, period=60)
+    # 使用统一的速率限制工具
+    allowed, remaining = RateLimiter.check_rate_limit(
+        identifier=identifier,
+        action="image_upload",
+        max_requests=10,
+        period=60
+    )
     if not allowed:
         response = JsonResponse({
             'code': 429,

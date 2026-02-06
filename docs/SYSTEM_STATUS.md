@@ -1,7 +1,7 @@
 ---
 system_name: "Nano Banana Blog"
-version: "0.1.0"
-last_updated: "2026-02-05"
+version: "0.2.0"
+last_updated: "2026-02-06"
 updated_by: "AI Assistant"
 status_tracker_version: "1.0"
 frontend_path: "p:\\workspace\\blog\\frontend"
@@ -16,17 +16,19 @@ backend_path: "p:\\workspace\\blog\\backend"
 
 | 模块 | 完成度 | 状态 | 最后更新 |
 |------|--------|------|----------|
-| 前端基础架构 | 95% | ✅ | 2026-02-05 |
-| 后端核心 API | 85% | ⚠️ | 2026-02-05 |
+| 前端基础架构 | 95% | ✅ | 2026-02-06 |
+| 后端核心 API | 90% | ✅ | 2026-02-06 |
 | 数据库与模型 | 90% | ✅ | 2026-02-05 |
 | 认证系统 | 90% | ✅ | 2026-02-05 |
 | 内容管理 | 80% | ⚠️ | 2026-02-05 |
 | 前后端集成 | 70% | ⚠️ | 2026-02-05 |
 | 搜索功能 | 40% | ❌ | 2026-02-05 |
-| 测试覆盖 | 10% | ❌ | 2026-02-05 |
+| 测试覆盖 | 10% | ❌ | 2026-02-06 |
 | 部署配置 | 75% | ⚠️ | 2026-02-05 |
+| 代码质量 | 85% | ✅ | 2026-02-06 |
+| 开发工作流 | 95% | ✅ | 2026-02-06 |
 
-**总体完成度**: 75%
+**总体完成度**: 78%
 
 ---
 
@@ -86,7 +88,7 @@ frontend/src/
 - [x] 生活管理页 (admin/life.page.vue)
 - [ ] 笔记页面（未实现）
 
-#### 组件库
+#### 组件库（38 个组件）
 
 **内容组件** (src/components/content/)
 - [x] MarkdownRenderer - Markdown 渲染器
@@ -254,7 +256,20 @@ backend/
 - [x] PopularArticles - 热门文章缓存
 - [x] UserAction - 用户行为追踪
 
-**数据库迁移**: 8 个应用，50+ 张表，全部迁移成功
+**数据库迁移**: 7 个应用，50+ 张表，全部迁移成功
+
+#### 代码质量优化 (85%) ✅
+- [x] N+1 查询优化（select_related/prefetch_related）
+- [x] 代码重复消除（utils 工具模块）
+- [x] Bug 修复：
+  - 评论点赞返回值不一致
+  - 用户更新逻辑错误
+  - 相关文章查询优化
+  - 统计 API 性能优化
+- [x] 工具模块创建（backend/utils/）
+  - ip_utils.py - IP 地址处理
+  - apps.py - 应用配置
+- [x] 导入优化（统一 get_client_ip）
 
 #### 认证系统 (90%)
 - [x] JWT 认证（djangorestframework-simplejwt）
@@ -371,21 +386,19 @@ backend/
 
 ### 🐛 已知问题
 
-#### 阻塞性问题
-1. **日志配置错误** (优先级：高)
-   - 错误：`KeyError: "Attempt to overwrite 'args' in LogRecord"`
-   - 位置：`p:\workspace\blog\backend\config\settings\base.py`
-   - 影响：API 调用失败
-   - 解决方案：重写日志配置或使用 Django 默认配置
-
 #### 非阻塞性问题
 1. **Elasticsearch 依赖** (优先级：中)
    - 状态：模块已临时禁用
-   - 需求：安装 elasticsearch-dsl-py
+   - 需求：完成 Elasticsearch 集成
 
 2. **Swagger 文档** (优先级：低)
    - 状态：DEBUG 配置问题
    - 影响：API 文档无法访问
+
+3. **安全配置** (优先级：中)
+   - 状态：开发环境配置
+   - 警告：SECURE_HSTS_SECONDS、SECURE_SSL_REDIRECT 未设置
+   - 影响：部署前需要配置
 
 ### 📦 依赖包状态
 
@@ -397,6 +410,36 @@ backend/
 - ✅ 异步任务（celery 5.4.0, django-celery-beat 2.7.0）
 - ✅ API 文档（drf-yasg 1.21.8）
 - ✅ 测试（pytest 8.3.4, pytest-django 4.9.0）
+
+---
+
+## 开发工作流状态
+
+### ✅ 已完成
+
+#### Claude Code 技能系统
+- [x] 全局技能（4 个）
+  - feature - 全流程功能开发（规划→设计→实现→测试→文档）
+  - fix-bug - 系统化 Bug 修复
+  - review - 代码审查与重构
+  - test - 测试创建与运行
+- [x] 项目特定技能（2 个）
+  - sync-status - 系统状态同步
+  - deploy - Docker 部署流程
+- [x] 技能使用文档（`.claude/README.md`）
+
+#### Git 工作流
+- [x] Git 提交规范（CLAUDE.md）
+- [x] 用户身份配置（xiaozhong9）
+- [x] .gitignore 配置（Claude Code 敏感文件）
+
+#### 文档规范
+- [x] AI 工作规范（CLAUDE.md）
+  - 调试代码管理规则
+  - 错误记录机制
+  - 文档同步要求
+- [x] 系统状态文档（SYSTEM_STATUS.md）
+- [x] 项目说明文档（CLAUDE.md）
 
 ---
 
@@ -489,16 +532,18 @@ docker-compose.yml 包含：
 ## 技术债务清单
 
 ### 高优先级
-1. **修复后端日志配置错误**（阻塞性）
-   - 位置：`p:\workspace\blog\backend\config\settings\base.py`
-   - 错误：`KeyError: "Attempt to overwrite 'args' in LogRecord"`
-
-2. **完成测试覆盖**
+1. **完成测试覆盖**
    - 当前：10%
    - 目标：80%
+   - 状态：3 个测试文件（test_auth.py, test_urls.py, admin-e2e.spec.ts 已删除）
 
-3. **启用并配置 Elasticsearch 搜索**
+2. **启用并配置 Elasticsearch 搜索**
    - 状态：模型已定义，需完成集成
+
+3. **实现 Celery 定时任务**
+   - 每日统计生成
+   - 清理过期缓存
+   - 同步热门文章缓存
 
 ### 中优先级
 4. **实现 Celery 定时任务**
@@ -567,14 +612,12 @@ docker-compose.yml 包含：
 
 ## 待办事项 (按优先级)
 
-### P0 - 阻塞性问题
-- [ ] 修复后端日志配置（`p:\workspace\blog\backend\config\settings\base.py`）
-
 ### P1 - 核心功能
 - [ ] 完成 Elasticsearch 搜索功能
 - [ ] 实现 Celery 定时任务
 - [ ] 添加单元测试（目标：80% 覆盖率）
 - [ ] 完善 API 文档
+- [ ] 配置生产环境安全设置（HTTPS、HSTS）
 
 ### P2 - 优化与改进
 - [ ] 前端性能优化（路由懒加载、Bundle 优化）
@@ -594,6 +637,7 @@ docker-compose.yml 包含：
 
 | 版本 | 日期 | 变更摘要 | 作者 |
 |------|------|----------|------|
+| 0.2.0 | 2026-02-06 | 代码质量优化、技能系统、工作流完善 | AI Assistant |
 | 0.1.0 | 2026-02-05 | 初始状态文档创建 | AI Assistant |
 
 ---
@@ -708,6 +752,6 @@ docker-compose down     # 停止服务
 
 ---
 
-**文档生成时间**: 2026-02-05
-**下次审查时间**: 2026-02-06
+**文档生成时间**: 2026-02-06
+**下次审查时间**: 2026-02-07
 **维护者**: AI Assistant

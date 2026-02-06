@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # 搜索配置常量
 MAX_PAGE_SIZE = 100  # 最大每页数量
 DEFAULT_PAGE_SIZE = 20
-DEFAULT_SEARCH_TIMEOUT = '3s'  # ES 查询超时
+DEFAULT_SEARCH_TIMEOUT = 3  # ES 查询超时（秒）
 MIN_QUERY_LENGTH = 2  # 最小查询长度
 
 
@@ -111,23 +111,8 @@ class SearchView(APIView):
             )
 
         try:
-            # 尝试从缓存获取结果（缓存 5 分钟）
-            cache_key = CacheKeyBuilder.build(
-                'search',
-                query,
-                request.query_params.get('category', ''),
-                request.query_params.get('tags', ''),
-                request.query_params.get('locale', ''),
-                sort_by,
-                page,
-                page_size
-            )
-
-            result = get_or_set(
-                cache_key,
-                lambda: self._perform_search(query, request, page, page_size, sort_by),
-                ttl=300
-            )
+            # 暂时禁用缓存，直接执行搜索
+            result = self._perform_search(query, request, page, page_size, sort_by)
 
             return Response({
                 'code': 200,
@@ -135,7 +120,7 @@ class SearchView(APIView):
                 'data': result
             })
 
-        except ElasticsearchException as e:
+        except (ApiError, TransportError) as e:
             logger.error(f"Elasticsearch 搜索失败: {e}, 查询: {query}")
             return self._error_response(
                 '搜索服务暂时不可用，请稍后重试',
@@ -227,9 +212,12 @@ class SearchView(APIView):
         # 序列化结果
         results = [self._serialize_hit(hit) for hit in response]
 
+        # 获取总数（兼容不同版本的 elasticsearch-dsl）
+        total = response.hits.total.value if hasattr(response.hits.total, 'value') else response.hits.total
+
         return {
             'items': results,
-            'total': response.hits.total.value,
+            'total': total,
             'page': page,
             'page_size': page_size,
             'query': query,

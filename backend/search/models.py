@@ -23,23 +23,15 @@ class ArticleDocument(Document):
 
     # 使用支持中文分词的 TextField
     title = fields.TextField(
-        analyzer='ik_max_word',
-        search_analyzer='ik_smart',
         fields={
             'keyword': fields.KeywordField(),
             'suggest': fields.TextField(),
         }
     )
 
-    description = fields.TextField(
-        analyzer='ik_max_word',
-        search_analyzer='ik_smart'
-    )
+    description = fields.TextField()
 
-    content = fields.TextField(
-        analyzer='ik_max_word',
-        search_analyzer='ik_smart'
-    )
+    content = fields.TextField()
 
     slug = fields.KeywordField()
 
@@ -87,35 +79,6 @@ class ArticleDocument(Document):
         settings = {
             'number_of_shards': 1,
             'number_of_replicas': 0,  # 单节点环境设为 0
-            'analysis': {
-                'analyzer': {
-                    'ik_max_word': {
-                        'type': 'custom',
-                        'tokenizer': 'ik_max_word'
-                    },
-                    'ik_smart': {
-                        'type': 'custom',
-                        'tokenizer': 'ik_smart'
-                    },
-                    # 中文拼音分词器（可选，需要安装插件）
-                    'pinyin_analyzer': {
-                        'type': 'custom',
-                        'tokenizer': 'ik_max_word',
-                        'filter': ['lowercase', 'pinyin']
-                    }
-                },
-                'filter': {
-                    'pinyin': {
-                        'type': 'pinyin',
-                        'keep_separate_first_letter': False,
-                        'keep_full_pinyin': True,
-                        'keep_original': True,
-                        'limit_first_letter_length': 16,
-                        'lowercase': True,
-                        'remove_duplicated_term': True
-                    }
-                }
-            },
             # 高亮配置
             'highlight': {
                 'max_analyzed_offset': 1000000

@@ -139,8 +139,6 @@ CACHES = {
             'SOCKET_TIMEOUT': config('REDIS_SOCKET_TIMEOUT', default=5, cast=int),
             # 连接池配置
             'CONNECTION_POOL_KWARGS': REDIS_CONNECTION_POOL_KWARGS,
-            # 压缩大型数据
-            'COMPRESSOR': 'redis.connection.HiredisParser' if config('USE_CACHE_COMPRESSION', default=False, cast=bool) else None,
         },
         'KEY_PREFIX': config('REDIS_CACHE_PREFIX', default='banana_cache'),
         'TIMEOUT': config('CACHE_DEFAULT_TIMEOUT', default=300, cast=int),  # 默认缓存 5 分钟

@@ -503,4 +503,113 @@ console.log('🔍 [LIFE-FILTER] 筛选器状态:', filterState)
 
 > 本章节记录重复出现的问题，避免重复犯错。
 
-*（暂无记录）*
+---
+
+### 错误 1：将 Claude Code 本地配置文件提交到 Git
+
+**错误现象**：
+- 将 `.claude/settings.local.json` 提交到版本控制
+- 文件包含测试用的 JWT access token
+- 敏感信息暴露在 Git 历史中
+
+**原因分析**：
+1. `.claude/settings.local.json` 是 Claude Code 的用户特定配置文件
+2. 文件可能包含敏感信息（API tokens、临时访问令牌等）
+3. Claude Code 初始化时没有自动将其添加到 `.gitignore`
+4. 在添加 Git 命令权限时，同时提交了配置文件
+
+**根本原因**：
+- 缺少对 `.claude/` 目录的理解
+- 不知道 `settings.local.json` 应该被忽略
+- 没有在提交前检查文件内容
+
+**解决方案**：
+
+1. **立即清除敏感信息**
+   ```bash
+   # 从本地文件中删除敏感信息
+   # 编辑 .claude/settings.local.json，删除包含 token 的行
+
+   # 从 Git 历史中完全清除
+   git filter-branch --force --index-filter \
+     "git rm --cached --ignore-unmatch .claude/settings.local.json" \
+     --prune-empty --tag-name-filter cat -- --all
+
+   # 强制推送到 GitHub
+   git push origin main --force
+   ```
+
+2. **添加到 .gitignore**
+   ```gitignore
+   # Claude Code - User specific settings (SENSITIVE)
+   .claude/settings.local.json
+   .claude/history.jsonl
+   .claude/debug/
+   .claude/cache/
+   .claude/file-history/
+   ```
+
+3. **验证清理**
+   ```bash
+   # 确认敏感信息已删除
+   grep -c "ACCESS_TOKEN" .claude/settings.local.json
+   # 输出应该是 0
+
+   # 确认文件已从 Git 中移除
+   git ls-files | grep settings.local.json
+   # 应该没有输出
+   ```
+
+**预防措施**：
+
+1. **项目初始化时**
+   - [ ] 检查 `.gitignore` 是否包含 Claude Code 配置
+   - [ ] 检查 `.claude/settings.local.json` 是否被跟踪
+   - [ ] 运行 `git status` 检查未跟踪文件
+
+2. **提交前检查**
+   - [ ] 检查 `git diff --cached` 查看将要提交的内容
+   - [ ] 搜索敏感信息：`git diff --cached | grep -i "token\|key\|secret\|password"`
+   - [ ] 确认没有配置文件被意外跟踪
+
+3. **使用工具扫描**
+   ```bash
+   # 使用 git-secrets 扫描历史
+   git secrets --scan
+
+   # 或使用 truffleHog
+   trufflehog --regex --entropy=False .git/
+   ```
+
+**文件说明**：
+
+| 文件 | 说明 | 是否应提交 |
+|------|------|------------|
+| `.claude/settings.local.json` | 用户特定配置，可能包含敏感信息 | ❌ 不应提交 |
+| `.claude/settings.json` | 项目配置，不含敏感信息 | ✅ 可以提交 |
+| `.claude/history.jsonl` | 会话历史，可能包含敏感信息 | ❌ 不应提交 |
+| `.claude/debug/` | 调试日志 | ❌ 不应提交 |
+| `.claude/cache/` | 缓存数据 | ❌ 不应提交 |
+| `.claude/file-history/` | 文件历史 | ❌ 不应提交 |
+
+**判断标准**：
+- `*.local.json` → 通常包含本地配置，不应提交
+- `history.jsonl` → 包含会话数据，不应提交
+- `debug/`, `cache/` → 临时文件，不应提交
+
+**首次发现**：2026-02-06
+
+**相关命令**：
+```bash
+# 检查哪些配置文件被跟踪
+git ls-files | grep "\.claude/"
+
+# 从 Git 中移除但保留本地文件
+git rm --cached .claude/settings.local.json
+
+# 检查 .gitignore 是否生效
+git check-ignore -v .claude/settings.local.json
+# 应该输出：.gitignore:3:.claude/settings.local.json
+```
+
+---

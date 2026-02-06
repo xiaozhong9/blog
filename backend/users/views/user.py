@@ -61,23 +61,23 @@ class UserViewSet(ModelViewSet):
     )
     def update(self, request, pk=None):
         """更新用户信息"""
-        # 只允许更新自己的信息
-        if str(request.user.id) != str(pk) and not request.user.is_admin():
+        # 只允许更新自己的信息或管理员更新任何用户
+        target_user = self.get_object()
+        if target_user != request.user and not request.user.is_admin():
             return Response({
                 'code': 403,
                 'message': '权限不足',
                 'data': None
             }, status=status.HTTP_403_FORBIDDEN)
 
-        user = request.user
-        serializer = UserUpdateSerializer(user, data=request.data, partial=True)
+        serializer = UserUpdateSerializer(target_user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
         return Response({
             'code': 200,
             'message': '更新成功',
-            'data': UserProfileSerializer(user).data
+            'data': UserProfileSerializer(target_user).data
         })
 
     @swagger_auto_schema(

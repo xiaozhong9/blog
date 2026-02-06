@@ -12,8 +12,9 @@ from rest_framework import filters
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.utils import timezone
-from django.db.models import Q, F
+from django.db.models import Q, F, Count
 from django.core.cache import cache
+from utils import get_client_ip
 
 from .models import Article, ArticleVersion
 from .serializers import (
@@ -29,26 +30,27 @@ class ArticleViewSet(ModelViewSet):
 
     queryset = Article.objects.select_related('author', 'category').prefetch_related('tags')
 
-    # 重写 get_object 方法支持 slug 和 ID 查找
     def get_object(self):
+        """
+        重写 get_object 方法支持 slug 和 ID 查找
+        使用 self.queryset 以利用 select_related/prefetch_related
+        """
         lookup_value = self.kwargs.get(self.lookup_field)
+        queryset = self.get_queryset()
 
-        # 尝试先按 slug 查找
+        # 尝试 slug 查询
         try:
-            article = Article.objects.get(slug=lookup_value)
-            self.check_object_permissions(self.request, article)
-            return article
+            return queryset.get(slug=lookup_value)
         except Article.DoesNotExist:
-            # 如果按 slug 没找到，尝试按 ID 查找
+            pass
+
+        # 尝试 ID 查询
+        if lookup_value.isdigit():
             try:
-                if lookup_value.isdigit():
-                    article = Article.objects.get(pk=int(lookup_value))
-                    self.check_object_permissions(self.request, article)
-                    return article
+                return queryset.get(pk=int(lookup_value))
             except Article.DoesNotExist:
                 pass
 
-        # 都没找到，返回 404
         from django.http import Http404
         raise Http404('文章不存在')
 
@@ -646,15 +648,6 @@ class ArticleViewSet(ModelViewSet):
             }
         })
 
-    def get_client_ip(self, request):
-        """获取客户端 IP 地址"""
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip = x_forwarded_for.split(',')[0]
-        else:
-            ip = request.META.get('REMOTE_ADDR')
-        return ip
-
     @swagger_auto_schema(
         operation_summary='获取相关文章',
         operation_description='基于标签相似度推荐相关文章',
@@ -667,36 +660,30 @@ class ArticleViewSet(ModelViewSet):
         limit = int(request.query_params.get('limit', 4))
 
         # 获取当前文章的所有标签 ID
-        article_tag_ids = set(article.tags.values_list('id', flat=True))
+        article_tag_ids = list(article.tags.values_list('id', flat=True))
 
         if not article_tag_ids:
             # 如果没有标签，返回同分类的其他文章
             related = Article.objects.filter(
                 category=article.category,
                 status='published'
-            ).exclude(pk=article.pk)[:limit]
+            ).exclude(pk=article.pk).select_related('author', 'category').prefetch_related('tags')[:limit]
         else:
-            # 预加载标签以避免 N+1 查询
-            related_articles = Article.objects.filter(
-                status='published'
-            ).exclude(pk=article.pk).prefetch_related('tags')
+            # 使用数据库聚合计算共同标签数量，避免 N+1 问题
+            from django.db.models import Count, Q
 
-            # 计算相似度并过滤
-            scored_articles = []
-            for related_article in related_articles:
-                # 使用标签 ID 集合比较（更高效）
-                related_tag_ids = set(tag.id for tag in related_article.tags.all())
-                common_count = len(article_tag_ids & related_tag_ids)
-
-                if common_count > 0:
-                    scored_articles.append({
-                        'article': related_article,
-                        'similarity': common_count
-                    })
-
-            # 按相似度排序并取前 N 条
-            scored_articles.sort(key=lambda x: x['similarity'], reverse=True)
-            related = [item['article'] for item in scored_articles[:limit]]
+            # 找出有共同标签的文章，按共同标签数量排序
+            related = (
+                Article.objects.filter(
+                    status='published',
+                    tags__id__in=article_tag_ids
+                )
+                .exclude(pk=article.pk)
+                .annotate(common_tags=Count('tags', filter=Q(tags__id__in=article_tag_ids)))
+                .order_by('-common_tags', '-view_count')
+                .select_related('author', 'category')
+                .prefetch_related('tags')[:limit]
+            )
 
         serializer = ArticleListSerializer(related, many=True)
 

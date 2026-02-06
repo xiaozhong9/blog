@@ -12,6 +12,7 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from django.db.models import F
 from django.utils import timezone
+from utils import get_client_ip
 
 from .models import Comment, CommentLike
 from .serializers import CommentSerializer, CommentCreateSerializer
@@ -237,13 +238,14 @@ class CommentViewSet(ModelViewSet):
         # 创建点赞记录
         CommentLike.objects.create(comment=comment, user=request.user)
 
-        # 增加点赞数
+        # 增加点赞数并刷新对象
         Comment.objects.filter(pk=comment.pk).update(like_count=F('like_count') + 1)
+        comment.refresh_from_db(fields=['like_count'])
 
         return Response({
             'code': 200,
             'message': '点赞成功',
-            'data': {'like_count': comment.like_count + 1}
+            'data': {'like_count': comment.like_count}
         })
 
     @swagger_auto_schema(
@@ -268,13 +270,14 @@ class CommentViewSet(ModelViewSet):
         # 删除点赞记录
         like.delete()
 
-        # 减少点赞数
+        # 减少点赞数并刷新对象
         Comment.objects.filter(pk=comment.pk).update(like_count=F('like_count') - 1)
+        comment.refresh_from_db(fields=['like_count'])
 
         return Response({
             'code': 200,
             'message': '取消成功',
-            'data': {'like_count': max(0, comment.like_count - 1)}
+            'data': {'like_count': max(0, comment.like_count)}
         })
 
     @swagger_auto_schema(

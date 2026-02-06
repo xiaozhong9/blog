@@ -1,6 +1,6 @@
 ---
 system_name: "Nano Banana Blog"
-version: "0.5.0"
+version: "0.6.0"
 last_updated: "2026-02-06"
 updated_by: "AI Assistant"
 status_tracker_version: "1.0"
@@ -27,10 +27,10 @@ backend_path: "p:\\workspace\\blog\\backend"
 | 部署配置 | 75% | ⚠️ | 2026-02-05 |
 | 代码质量 | 90% | ✅ | 2026-02-06 |
 | 缓存系统 | 95% | ✅ | 2026-02-06 |
-| 异步任务 | 95% | ✅ | 2026-02-06 |
+| 异步任务 | 100% | ✅ | 2026-02-06 |
 | 开发工作流 | 95% | ✅ | 2026-02-06 |
 
-**总体完成度**: 87%
+**总体完成度**: 90%
 
 ---
 
@@ -387,7 +387,7 @@ backend/
 
 **状态**: 搜索功能已完成并测试通过 ✅
 
-#### Celery 异步任务 (95%) ✅
+#### Celery 异步任务 (100%) ✅
 - [x] Celery 配置
 - [x] Celery Beat 配置
 - [x] **优化配置**
@@ -410,10 +410,19 @@ backend/
   - 15 个任务已注册
   - Concurrency: 20 (solo pool)
   - 状态：celery@computer ready
-- [ ] 定时任务调度配置（Celery Beat）
-- [ ] Flower 监控面板启动
+- [x] **定时任务调度配置完成** ✅
+  - beat_schedule 配置已添加
+  - 3 个定时任务已注册
+- [x] **Flower 监控面板启动** ✅
+  - 访问地址：http://localhost:5555
+  - 用于监控任务执行状态
 
-**状态**: Celery Worker 已启动并就绪 ✅
+**定时任务列表**：
+- 每日统计生成：每天 00:00
+- 清理过期缓存：每小时
+- 同步热门文章缓存：每 15 分钟
+
+**状态**: Celery 系统完全就绪 ✅
 
 #### API 文档 (50%)
 - [x] drf-yasg 配置
@@ -692,6 +701,7 @@ docker-compose.yml 包含：
 
 | 版本 | 日期 | 变更摘要 | 作者 |
 |------|------|----------|------|
+| 0.6.0 | 2026-02-06 | Celery Beat 和 Flower 配置完成、异步系统 100% | AI Assistant |
 | 0.5.0 | 2026-02-06 | Celery Worker 启动成功、异步任务系统就绪 | AI Assistant |
 | 0.4.0 | 2026-02-06 | Elasticsearch 搜索功能完成并测试通过 | AI Assistant |
 | 0.3.0 | 2026-02-06 | Redis 和 Elasticsearch 优化、Celery 任务实现 | AI Assistant |

@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
+from rest_framework.permissions import AllowAny
 from drf_yasg.utils import swagger_auto_schema
 from django.db.models import Count, Sum, Q
 from django.utils import timezone
@@ -20,7 +21,8 @@ from .serializers import OverviewSerializer
 
 
 class StatsViewSet(ViewSet):
-    """统计视图集"""
+    """统计视图集 - 允许匿名访问"""
+    permission_classes = [AllowAny]
 
     @swagger_auto_schema(
         operation_summary='获取总览统计',

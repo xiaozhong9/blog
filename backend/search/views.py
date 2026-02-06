@@ -15,6 +15,7 @@ from typing import Optional, List, Dict, Any
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from elasticsearch_dsl import Q
@@ -38,6 +39,7 @@ class SearchView(APIView):
 
     支持全文搜索、分类过滤、标签过滤、高亮显示等功能
     """
+    permission_classes = [AllowAny]  # 允许匿名访问
 
     @swagger_auto_schema(
         operation_summary='全文搜索',
@@ -314,6 +316,7 @@ class SearchSuggestView(APIView):
 
     提供基于前缀的搜索建议
     """
+    permission_classes = [AllowAny]  # 允许匿名访问
 
     @swagger_auto_schema(
         operation_summary='搜索建议',

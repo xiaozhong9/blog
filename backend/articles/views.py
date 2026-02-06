@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from drf_yasg.utils import swagger_auto_schema
@@ -71,12 +71,13 @@ class ArticleViewSet(ModelViewSet):
         return ArticleCreateUpdateSerializer
 
     def get_permissions(self):
-        """权限控制"""
+        """权限控制 - 读取操作允许匿名访问"""
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [IsAuthenticated()]
         elif self.action in ['create_version']:
             return [IsAuthenticated()]
-        return []
+        # 读取操作允许匿名访问
+        return [AllowAny()]
 
     def get_queryset(self):
         """自定义查询集"""

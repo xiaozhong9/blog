@@ -6,6 +6,7 @@
 
 import logging
 from datetime import datetime, timedelta
+from typing import Optional
 from celery import shared_task
 from celery.utils.log import get_task_logger
 from django.db.models import Count, Sum, Q
